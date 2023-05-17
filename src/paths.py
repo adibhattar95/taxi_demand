@@ -6,6 +6,8 @@ DATA_DIR = PARENT_DIR / 'data'
 RAW_DATA_DIR = PARENT_DIR / 'data' / 'raw'
 TRANSFORMED_DATA_DIR = PARENT_DIR / 'data' / 'transformed'
 
+MODELS_DIR = PARENT_DIR / 'models'
+
 if not Path(DATA_DIR).exists():
     os.mkdir(DATA_DIR)
 

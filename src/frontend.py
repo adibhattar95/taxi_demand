@@ -140,7 +140,7 @@ with st.spinner(text="Generating NYC Map"):
 
 with st.spinner(text = "Plotting time-series data"):
 
-    row_indices = np.argsort(results['predicted_demand'].values)[::1]
+    row_indices = np.argsort(results['predicted_demand'].values)[::-1]
     n_to_plot = 10
 
     #Plot each time series with the prediction

@@ -71,7 +71,7 @@ def load_batch_of_features_from_store(current_date: datetime) -> pd.DataFrame:
     ts_data = ts_data.sort_values(by = ['pickup_location_id', 'pickup_hour'])
 
     #transpose time_series data as a feature vector for each pickup_location_id
-    x = np.array(shape = (len(location_ids), n_features), dtype=np.float32)
+    x = np.ndarray(shape = (len(location_ids), n_features), dtype=np.float32)
     for i, location_id in enumerate(location_ids):
         ts_data_i = ts_data[ts_data['pickup_location_id'] == location_id]
         ts_data_i = ts_data_i.sort_values(by = 'pickup_hour')

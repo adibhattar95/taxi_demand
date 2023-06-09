@@ -95,28 +95,44 @@ def load_raw_data(year: int, months: Optional[List[int]] = None) -> pd.DataFrame
         rides = rides[['pickup_datetime', 'pickup_location_id']]
         return rides
     
-def add_missing_slots(agg_rides:pd.DataFrame) -> pd.DataFrame:
+def add_missing_slots(ts_data: pd.DataFrame) -> pd.DataFrame:
     """
-    Add necessary rows to the ts_data so that data for every hour and day is avialable for each location
+    Add necessary rows to the input 'ts_data' to make sure the output
+    has a complete list of
+    - pickup_hours
+    - pickup_location_ids
     """
+    location_ids = range(1, ts_data['pickup_location_id'].max() + 1)
 
-    location_ids = agg_rides['pickup_location_id'].unique()
-    full_range = pd.date_range(agg_rides['pickup_hour'].min(), agg_rides['pickup_hour'].max(), freq="H")
+    full_range = pd.date_range(ts_data['pickup_hour'].min(),
+                               ts_data['pickup_hour'].max(),
+                               freq='H')
     output = pd.DataFrame()
-
     for location_id in tqdm(location_ids):
 
-        #Keep only rides for this location_id
-        agg_rides_i = agg_rides[agg_rides['pickup_location_id'] == location_id][['pickup_hour', 'rides']]
+        # keep only rides for this 'location_id'
+        ts_data_i = ts_data.loc[ts_data.pickup_location_id == location_id, ['pickup_hour', 'rides']]
+        
+        if ts_data_i.empty:
+            # add a dummy entry with a 0
+            ts_data_i = pd.DataFrame.from_dict([
+                {'pickup_hour': ts_data['pickup_hour'].max(), 'rides': 0}
+            ])
 
-        agg_rides_i = agg_rides_i.set_index('pickup_hour')
-        agg_rides_i.index = pd.DatetimeIndex(agg_rides_i.index)
-        agg_rides_i = agg_rides_i.reindex(full_range, fill_value = 0)
-        agg_rides_i['pickup_location_id'] = location_id
-        output = pd.concat([output, agg_rides_i])
+        # quick way to add missing dates with 0 in a Series
+        # taken from https://stackoverflow.com/a/19324591
+        ts_data_i.set_index('pickup_hour', inplace=True)
+        ts_data_i.index = pd.DatetimeIndex(ts_data_i.index)
+        ts_data_i = ts_data_i.reindex(full_range, fill_value=0)
+        
+        # add back `location_id` columns
+        ts_data_i['pickup_location_id'] = location_id
 
-    output = output.reset_index().rename(columns = {'index':'pickup_hour'})
-
+        output = pd.concat([output, ts_data_i])
+    
+    # move the pickup_hour from the index to a dataframe column
+    output = output.reset_index().rename(columns={'index': 'pickup_hour'})
+    
     return output
 
 def transform_raw_data_into_ts_data(rides: pd.DataFrame) -> pd.DataFrame:
@@ -192,5 +208,35 @@ def get_cutoff_indices(data: pd.DataFrame, n_features: int, step_size: int) -> l
         subseq_last_idx += step_size
 
     return indices
+
+def fetch_ride_events_from_data_warehouse(from_date: datetime, to_date: datetime) -> pd.DataFrame:
+    """
+    This function is used to simulate production data by sampling historical data
+    from 52 weeks ago (1 year)
+    """
+
+    from_date_ = from_date - timedelta(days = 7*52)
+    to_date_ = to_date - timedelta(days = 7*52)
+    print(f'Fetching ride events from {from_date} to {to_date}')
+
+    if (from_date_.year == to_date_.year) and (from_date_.month == to_date_.month):
+        #donwload 1 file of data only
+        rides = load_raw_data(year=from_date_.year, months=from_date_.month)
+        rides = rides[rides['pickup_datetime'] >= from_date_]
+        rides = rides[rides['pickup_datetime'] < to_date_]
+
+    else:
+        # download 2 files from website
+        rides = load_raw_data(year=from_date_.year, months=from_date_.month)
+        rides = rides[rides['pickup_datetime'] >= from_date_]
+        rides_2 = load_raw_data(year=to_date_.year, months=to_date_.month)
+        rides_2 = rides_2[rides_2['pickup_datetime'] < to_date_]
+        rides = pd.concat([rides, rides_2])
+
+
+    #Shift the pickup_datetime back to 1 year ahead, to simulate production data
+    rides['pickup_datetime'] += timedelta(days = 7*52)
+    rides = rides.sort_values(by = ['pickup_location_id', 'pickup_datetime'])
+    return rides
 
 

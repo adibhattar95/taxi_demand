@@ -101,3 +101,63 @@ def load_model_from_registry():
 
     return model
 
+
+def load_predictions_from_store(
+        from_pickup_hour: datetime,
+        to_pickup_hour: datetime) -> pd.DataFrame:
+    """
+    Connects to the feature store and retrieves model predictions for all
+    `pickup_location_id`s and for the time period from `from_pickup_hour`
+    to `to_pickup_hour`
+
+    Args:
+        from_pickup_hour (datetime): min datetime (rounded hour) for which we want to get
+        predictions
+
+        to_pickup_hour (datetime): max datetime (rounded hour) for which we want to get
+        predictions
+
+    Returns:
+        pd.DataFrame: 3 columns:
+            - `pickup_location_id`
+            - `predicted_demand`
+            - `pickup_hour`
+    """
+    from src.feature_store_api import get_feature_store
+    import src.config as config
+
+    feature_store = get_feature_store()
+
+    predictiong_fg = feature_store.get_feature_group(
+        name=config.FEATURE_GROUP_MODEL_PREDICTIONS,
+        version=1,
+    )
+
+    try:
+        # create feature view as it does not exist yet
+        feature_store.create_feature_view(
+            name=config.FEATURE_VIEW_MODEL_PREDICTIONS,
+            version=1,
+            query=predictiong_fg.select_all()
+        )
+    except:
+        print(f'Feature view {config.FEATURE_VIEW_MODEL_PREDICTIONS} \
+              already existed. Skipped creation.')
+        
+    predictions_fv = feature_store.get_feature_view(
+        name=config.FEATURE_VIEW_MODEL_PREDICTIONS,
+        version=1
+    )
+    
+    print(f'Fetching predictions for `pickup_hours` between {from_pickup_hour}  and {to_pickup_hour}')
+    predictions = predictions_fv.get_batch_data(
+        start_time=from_pickup_hour - timedelta(days=1),
+        end_time=to_pickup_hour + timedelta(days=1)
+    )
+    predictions = predictions[predictions.pickup_hour.between(
+        from_pickup_hour, to_pickup_hour)]
+
+    # sort by `pick_up_hour` and `pickup_location_id`
+    predictions.sort_values(by=['pickup_hour', 'pickup_location_id'], inplace=True)
+
+    return predictions
